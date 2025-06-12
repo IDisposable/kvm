@@ -10,6 +10,7 @@ import { chars as chars_es_ES, name as name_es_ES } from "@/keyboardLayouts/es_E
 import { chars as chars_sv_SE, name as name_sv_SE } from "@/keyboardLayouts/sv_SE"
 import { chars as chars_fr_CH, name as name_fr_CH } from "@/keyboardLayouts/fr_CH"
 import { chars as chars_de_CH, name as name_de_CH } from "@/keyboardLayouts/de_CH"
+import { chars as chars_pl_PL_t, name as name_pl_PL_t } from "@/keyboardLayouts/pl_PL_t"
 
 interface KeyInfo { key: string | number; shift?: boolean, altRight?: boolean }
 export type KeyCombo = KeyInfo & { deadKey?: boolean, accentKey?: KeyInfo }
@@ -27,6 +28,7 @@ export const layouts: Record<string, string> = {
   sv_SE: name_sv_SE,
   fr_CH: name_fr_CH,
   de_CH: name_de_CH,
+  pl_PL_t: name_pl_PL_t,
 }
 
 export const chars: Record<string, Record<string, KeyCombo>> = {
@@ -42,4 +44,5 @@ export const chars: Record<string, Record<string, KeyCombo>> = {
   sv_SE: chars_sv_SE,
   fr_CH: chars_fr_CH,
   de_CH: chars_de_CH,
+  pl_PL_t: chars_pl_PL_t,
 };
