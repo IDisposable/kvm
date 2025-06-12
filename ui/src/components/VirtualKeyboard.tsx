@@ -292,7 +292,7 @@ function KeyboardWrapper() {
                           "Tab KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Backslash",
                           "CapsLock KeyA KeyS KeyD KeyF KeyG KeyH KeyJ KeyK KeyL Semicolon Quote Enter",
                           "ShiftLeft KeyZ KeyX KeyC KeyV KeyB KeyN KeyM Comma Period Slash ShiftRight",
-                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
+                          "ControlLeft MetaLeft AltLeft Space AltRight MetaRight ControlRight",
                         ],
                         shift: [
                           "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
@@ -301,7 +301,7 @@ function KeyboardWrapper() {
                           "Tab (KeyQ) (KeyW) (KeyE) (KeyR) (KeyT) (KeyY) (KeyU) (KeyI) (KeyO) (KeyP) (BracketLeft) (BracketRight) (Backslash)",
                           "CapsLock (KeyA) (KeyS) (KeyD) (KeyF) (KeyG) (KeyH) (KeyJ) (KeyK) (KeyL) (Semicolon) (Quote) Enter",
                           "ShiftLeft (KeyZ) (KeyX) (KeyC) (KeyV) (KeyB) (KeyN) (KeyM) (Comma) (Period) (Slash) ShiftRight",
-                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
+                          "ControlLeft MetaLeft AltLeft Space AltRight MetaRight ControlRight",
                         ],
                       }}
                       disableButtonHold={true}
@@ -317,8 +317,8 @@ function KeyboardWrapper() {
                         onKeyPress={onKeyDown}
                         display={keyDisplayMap}
                         layout={{
-                          default: ["PrintScreen ScrollLock Pause", "Insert Home Pageup", "Delete End Pagedown"],
-                          shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home Pageup", "Delete End Pagedown"],
+                          default: ["PrintScreen ScrollLock Pause", "Insert Home PageUp", "Delete End PageDown"],
+                          shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home PageUp", "Delete End PageDown"],
                         }}
                         syncInstanceInputs={true}
                         debug={false}
