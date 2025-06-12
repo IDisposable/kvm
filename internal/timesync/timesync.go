@@ -188,7 +188,7 @@ Orders:
 		case "ntp":
 			if syncMode.Ntp && syncMode.NtpUseFallback {
 				t.l.Info().Msg("using NTP fallback")
-				now, offset = t.queryNetworkTime(defaultNTPServers)
+				now, offset = t.queryNetworkTime(defaultNTPServerIPs)
 				if now != nil {
 					t.l.Info().Str("source", "NTP fallback").Time("now", *now).Msg("time obtained")
 					break Orders
