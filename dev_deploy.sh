@@ -25,6 +25,7 @@ show_help() {
     echo
     echo "Optional:"
     echo "  -u, --user <remote_user>   Remote username (default: root)"
+    echo "  -i, --install-app          Install the application on the remote host"
     echo "      --run-go-tests         Run go tests"
     echo "      --run-go-tests-only    Run go tests and exit"
     echo "      --skip-ui-build        Skip frontend/UI build"
@@ -43,6 +44,7 @@ RESET_USB_HID_DEVICE=false
 LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 RUN_GO_TESTS=false
 RUN_GO_TESTS_ONLY=false
+INSTALL_APP=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -54,6 +56,10 @@ while [[ $# -gt 0 ]]; do
         -u|--user)
             REMOTE_USER="$2"
             shift 2
+            ;;
+        -i|--install-app)
+            INSTALL_APP=true
+            shift
             ;;
         --skip-ui-build)
             SKIP_UI_BUILD=true
@@ -105,7 +111,7 @@ if [ "$RUN_GO_TESTS" = true ]; then
     ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /tmp/device-tests.tar.gz" < device-tests.tar.gz
 
     msg_info "▶ Running go tests"
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << 'EOF'
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << 'TESTEOF'
 set -e
 TMP_DIR=$(mktemp -d)
 cd ${TMP_DIR}
@@ -131,7 +137,7 @@ fi
 
 echo "✅ Tests passed"
 rm -rf ${TMP_DIR} /tmp/device-tests.tar.gz
-EOF
+TESTEOF
 
     if [ "$RUN_GO_TESTS_ONLY" = true ]; then
         msg_info "▶ Go tests completed"
@@ -139,25 +145,43 @@ EOF
     fi
 fi
 
-msg_info "▶ Building go binary"
-make build_dev
+if [ "$INSTALL_APP" = true ]
+then
+	msg_info "▶ Building release go binary"
+	make build_release
 
-# Kill any existing instances of the application
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
+	# Copy the binary to the remote host as if we were the OTA updater.
+	ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
 
-# Copy the binary to the remote host
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
+	# Reboot the device, the new app will be deployed by the startup process.
+	ssh "${REMOTE_USER}@${REMOTE_HOST}" "reboot"
 
-if [ "$RESET_USB_HID_DEVICE" = true ]; then
-    msg_info "▶ Resetting USB HID device"
-    msg_warn "The option has been deprecated and will be removed in a future version, as JetKVM will now reset USB gadget configuration when needed"
-    # Remove the old USB gadget configuration
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
-fi
+    msg_ok "Rebooting device..."
+else
+	msg_info "▶ Building development go binary"
+	make build_dev
 
-# Deploy and run the application on the remote host
-ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
+    # Kill any existing instances of the application
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
+
+    # Copy the binary to the remote host
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
+
+    # Make the new binary executable
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "chmod +x ${REMOTE_PATH}/jetkvm_app_debug"
+
+    if [ "$RESET_USB_HID_DEVICE" = true ]; then
+        msg_info "▶ Resetting USB HID device"
+        msg_warn "The option has been deprecated and will be removed in a future version, as JetKVM will now reset USB gadget configuration when needed"
+        # Remove the old USB gadget configuration
+        ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
+        ssh "${REMOTE_USER}@${REMOTE_HOST}" "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
+    fi
+
+    msg_ok "Running the debug application on the device..."
+
+    # Run the application on the remote host
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << 'DEBUGEOF'
 set -e
 
 # Set the library path to include the directory where librockit.so is located
@@ -170,11 +194,10 @@ killall jetkvm_app_debug || true
 # Navigate to the directory where the binary will be stored
 cd "${REMOTE_PATH}"
 
-# Make the new binary executable
-chmod +x jetkvm_app_debug
-
 # Run the application in the background
 PION_LOG_TRACE=${LOG_TRACE_SCOPES} GODEBUG=netdns=1 ./jetkvm_app_debug
-EOF
+DEBUGEOF
+    msg_ok "Debug application is running on the device."
+fi
 
 echo "Deployment complete."
