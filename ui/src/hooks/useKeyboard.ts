@@ -277,7 +277,6 @@ export default function useKeyboard() {
     cancelKeepAlive();
   }, [cancelKeepAlive]);
 
-
   // executeMacro is used to execute a macro consisting of multiple steps.
   // Each step can have multiple keys, multiple modifiers and a delay.
   // The keys and modifiers are pressed together and held for the delay duration.
@@ -292,9 +291,7 @@ export default function useKeyboard() {
     for (const [_, step] of steps.entries()) {
       const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
       const modifierMask: number = (step.modifiers || [])
-
         .map(mod => modifiers[mod])
-
         .reduce((acc, val) => acc + val, 0);
 
       // If the step has keys and/or modifiers, press them and hold for the delay
@@ -306,6 +303,7 @@ export default function useKeyboard() {
 
     sendKeyboardMacroEventHidRpc(macro);
   }, [sendKeyboardMacroEventHidRpc]);
+
   const executeMacroClientSide = useCallback(async (steps: MacroSteps) => {
     const promises: (() => Promise<void>)[] = [];
 

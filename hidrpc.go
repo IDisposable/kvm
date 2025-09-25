@@ -65,15 +65,17 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 
 func onHidMessage(msg hidQueueMessage, session *Session) {
 	data := msg.Data
+	dataLen := len(data)
 
 	scopedLogger := hidRPCLogger.With().
 		Str("channel", msg.channel).
-		Bytes("data", data).
+		Int("data_len", dataLen).
+		Bytes("data", data[:min(dataLen, 32)]).
 		Logger()
 	scopedLogger.Debug().Msg("HID RPC message received")
 
-	if len(data) < 1 {
-		scopedLogger.Warn().Int("length", len(data)).Msg("received empty data in HID RPC message handler")
+	if dataLen < 1 {
+		scopedLogger.Warn().Msg("received empty data in HID RPC message handler")
 		return
 	}
 
@@ -96,7 +98,7 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 		r <- nil
 	}()
 	select {
-	case <-time.After(1 * time.Second):
+	case <-time.After(30 * time.Second):
 		scopedLogger.Warn().Msg("HID RPC message timed out")
 	case <-r:
 		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")

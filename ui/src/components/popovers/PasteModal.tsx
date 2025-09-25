@@ -188,18 +188,18 @@ export default function PasteModal() {
                     type="number"
                     label="Delay between keys"
                     placeholder="Delay between keys"
-                    min={50}
+                    min={0}
                     max={65534}
                     value={delayValue}
                     onChange={e => {
                       setDelayValue(parseInt(e.target.value, 10));
                     }}
                   />
-                  {delayValue < 50 || delayValue > 65534 && (
+                  {delayValue < defaultDelay || delayValue > 65534 && (
                     <div className="mt-2 flex items-center gap-x-2">
                       <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                       <span className="text-xs text-red-500 dark:text-red-400">
-                        Delay must be between 50 and 65534
+                        Delay should be between 20 and 65534
                       </span>
                     </div>
                   )}
