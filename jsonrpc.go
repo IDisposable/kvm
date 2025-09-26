@@ -1078,15 +1078,20 @@ type RunningMacro struct {
 var (
 	keyboardMacroCancelMap map[uuid.UUID]RunningMacro
 	keyboardMacroLock      sync.Mutex
+	keyboardMacroOnce      sync.Once
 )
 
-func init() {
-	keyboardMacroCancelMap = make(map[uuid.UUID]RunningMacro)
+func getKeyboardMacroCancelMap() map[uuid.UUID]RunningMacro {
+	keyboardMacroOnce.Do(func() {
+		keyboardMacroCancelMap = make(map[uuid.UUID]RunningMacro)
+	})
+	return keyboardMacroCancelMap
 }
 
 func addKeyboardMacro(isPaste bool, cancel context.CancelFunc) uuid.UUID {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
+	keyboardMacroCancelMap := getKeyboardMacroCancelMap()
 
 	token := uuid.New() // Generate a unique token
 	keyboardMacroCancelMap[token] = RunningMacro{
@@ -1099,6 +1104,7 @@ func addKeyboardMacro(isPaste bool, cancel context.CancelFunc) uuid.UUID {
 func removeRunningKeyboardMacro(token uuid.UUID) {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
+	keyboardMacroCancelMap := getKeyboardMacroCancelMap()
 
 	delete(keyboardMacroCancelMap, token)
 }
@@ -1106,6 +1112,7 @@ func removeRunningKeyboardMacro(token uuid.UUID) {
 func cancelRunningKeyboardMacro(token uuid.UUID) {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
+	keyboardMacroCancelMap := getKeyboardMacroCancelMap()
 
 	if runningMacro, exists := keyboardMacroCancelMap[token]; exists {
 		runningMacro.cancel()
@@ -1119,6 +1126,7 @@ func cancelRunningKeyboardMacro(token uuid.UUID) {
 func cancelAllRunningKeyboardMacros() {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
+	keyboardMacroCancelMap := getKeyboardMacroCancelMap()
 
 	for token, runningMacro := range keyboardMacroCancelMap {
 		runningMacro.cancel()
@@ -1131,6 +1139,7 @@ func reportRunningMacrosState() {
 	if currentSession != nil {
 		keyboardMacroLock.Lock()
 		defer keyboardMacroLock.Unlock()
+		keyboardMacroCancelMap := getKeyboardMacroCancelMap()
 
 		isPaste := false
 		anyRunning := false
