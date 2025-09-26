@@ -26,20 +26,45 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			return
 		}
 		session.hidRPCAvailable = true
+
 	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
 		rpcErr = handleHidRPCKeyboardInput(message)
+
 	case hidrpc.TypeKeyboardMacroReport:
 		keyboardMacroReport, err := message.KeyboardMacroReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
 			return
 		}
-		rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
+		token := rpcExecuteKeyboardMacro(keyboardMacroReport.IsPaste, keyboardMacroReport.Steps)
+		logger.Debug().Str("token", token.String()).Msg("started keyboard macro")
+		message, err := hidrpc.NewKeyboardMacroTokenMessage(token).Marshal()
+
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to marshal running macro token message")
+			return
+		}
+		if err := session.HidChannel.Send(message); err != nil {
+			logger.Warn().Err(err).Msg("failed to send running macro token message")
+			return
+		}
+
 	case hidrpc.TypeCancelKeyboardMacroReport:
 		rpcCancelKeyboardMacro()
 		return
+
+	case hidrpc.TypeCancelKeyboardMacroByTokenReport:
+		token, err := message.KeyboardMacroToken()
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to get keyboard macro token")
+			return
+		}
+		rpcCancelKeyboardMacroByToken(token)
+		return
+
 	case hidrpc.TypeKeypressKeepAliveReport:
 		rpcErr = handleHidRPCKeypressKeepAlive(session)
+
 	case hidrpc.TypePointerReport:
 		pointerReport, err := message.PointerReport()
 		if err != nil {
@@ -47,6 +72,7 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			return
 		}
 		rpcErr = rpcAbsMouseReport(pointerReport.X, pointerReport.Y, pointerReport.Button)
+
 	case hidrpc.TypeMouseReport:
 		mouseReport, err := message.MouseReport()
 		if err != nil {
@@ -54,6 +80,7 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			return
 		}
 		rpcErr = rpcRelMouseReport(mouseReport.DX, mouseReport.DY, mouseReport.Button)
+
 	default:
 		logger.Warn().Uint8("type", uint8(message.Type())).Msg("unknown HID RPC message type")
 	}
@@ -98,7 +125,7 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 		r <- nil
 	}()
 	select {
-	case <-time.After(30 * time.Second):
+	case <-time.After(1 * time.Second):
 		scopedLogger.Warn().Msg("HID RPC message timed out")
 	case <-r:
 		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")

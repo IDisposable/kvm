@@ -1,7 +1,6 @@
 package kvm
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
@@ -1070,68 +1070,121 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 	return nil
 }
 
+type RunningMacro struct {
+	cancel  context.CancelFunc
+	isPaste bool
+}
+
 var (
-	keyboardMacroCancel context.CancelFunc
-	keyboardMacroLock   sync.Mutex
+	keyboardMacroCancelMap map[uuid.UUID]RunningMacro
+	keyboardMacroLock      sync.Mutex
 )
 
-// cancelKeyboardMacro cancels any ongoing keyboard macro execution
-func cancelKeyboardMacro() {
+func init() {
+	keyboardMacroCancelMap = make(map[uuid.UUID]RunningMacro)
+}
+
+func addKeyboardMacro(isPaste bool, cancel context.CancelFunc) uuid.UUID {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
-	if keyboardMacroCancel != nil {
-		keyboardMacroCancel()
-		logger.Info().Msg("canceled keyboard macro")
-		keyboardMacroCancel = nil
+	token := uuid.New() // Generate a unique token
+	keyboardMacroCancelMap[token] = RunningMacro{
+		isPaste: isPaste,
+		cancel:  cancel,
+	}
+	return token
+}
+
+func removeRunningKeyboardMacro(token uuid.UUID) {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+
+	delete(keyboardMacroCancelMap, token)
+}
+
+func cancelRunningKeyboardMacro(token uuid.UUID) {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+
+	if runningMacro, exists := keyboardMacroCancelMap[token]; exists {
+		runningMacro.cancel()
+		delete(keyboardMacroCancelMap, token)
+		logger.Info().Interface("token", token).Msg("canceled keyboard macro by token")
+	} else {
+		logger.Debug().Interface("token", token).Msg("no running keyboard macro found for token")
 	}
 }
 
-func setKeyboardMacroCancel(cancel context.CancelFunc) {
+func cancelAllRunningKeyboardMacros() {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
-	keyboardMacroCancel = cancel
+	for token, runningMacro := range keyboardMacroCancelMap {
+		runningMacro.cancel()
+		delete(keyboardMacroCancelMap, token)
+		logger.Info().Interface("token", token).Msg("cancelled keyboard macro")
+	}
 }
 
-func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
-	cancelKeyboardMacro()
+func reportRunningMacrosState() {
+	if currentSession != nil {
+		keyboardMacroLock.Lock()
+		defer keyboardMacroLock.Unlock()
 
+		isPaste := false
+		anyRunning := false
+		for _, runningMacro := range keyboardMacroCancelMap {
+			anyRunning = true
+			if runningMacro.isPaste {
+				isPaste = true
+				break
+			}
+		}
+
+		state := hidrpc.KeyboardMacroState{
+			State:   anyRunning,
+			IsPaste: isPaste,
+		}
+
+		currentSession.reportHidRPCKeyboardMacroState(state)
+	}
+}
+
+func rpcExecuteKeyboardMacro(isPaste bool, macro []hidrpc.KeyboardMacroStep) uuid.UUID {
 	ctx, cancel := context.WithCancel(context.Background())
-	setKeyboardMacroCancel(cancel)
+	token := addKeyboardMacro(isPaste, cancel)
+	reportRunningMacrosState()
 
-	s := hidrpc.KeyboardMacroState{
-		State:   true,
-		IsPaste: true,
-	}
+	go func() {
+		defer reportRunningMacrosState()        // this executes last, so the map is already updated
+		defer removeRunningKeyboardMacro(token) // this executes first, to update the map
 
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
-	}
+		err := executeKeyboardMacro(ctx, isPaste, macro)
+		if err != nil {
+			logger.Error().Err(err).Interface("token", token).Bool("isPaste", isPaste).Msg("keyboard macro execution failed")
+		}
+	}()
 
-	err := rpcDoExecuteKeyboardMacro(ctx, macro)
-
-	setKeyboardMacroCancel(nil)
-
-	s.State = false
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
-	}
-
-	return err
+	return token
 }
 
 func rpcCancelKeyboardMacro() {
-	cancelKeyboardMacro()
+	defer reportRunningMacrosState()
+	cancelAllRunningKeyboardMacros()
 }
 
-var keyboardClearStateKeys = make([]byte, hidrpc.HidKeyBufferSize)
+func rpcCancelKeyboardMacroByToken(token uuid.UUID) {
+	defer reportRunningMacrosState()
 
-func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
-	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
+	if token == uuid.Nil {
+		cancelAllRunningKeyboardMacros()
+	} else {
+		cancelRunningKeyboardMacro(token)
+	}
 }
 
-func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
+func executeKeyboardMacro(ctx context.Context, isPaste bool, macro []hidrpc.KeyboardMacroStep) error {
 	logger.Debug().Int("macro_steps", len(macro)).Msg("Executing keyboard macro")
 
 	// don't report keyboard state changes while executing the macro
@@ -1143,13 +1196,8 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 
 		err := rpcKeyboardReport(step.Modifier, step.Keys)
 		if err != nil {
-			logger.Warn().Err(err).Msg("failed to execute keyboard macro")
+			logger.Warn().Err(err).Int("step", i).Msg("failed to execute keyboard macro")
 			return err
-		}
-
-		// notify the device that the keyboard state is being cleared
-		if isClearKeyStep(step) {
-			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
 		}
 
 		// Use context-aware sleep that can be cancelled
@@ -1159,7 +1207,7 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 		case <-ctx.Done():
 			// make sure keyboard state is reset and the client gets notified
 			gadget.ResumeSuspendKeyDownMessages()
-			err := rpcKeyboardReport(0, keyboardClearStateKeys)
+			err := rpcKeyboardReport(0, make([]byte, hidrpc.HidKeyBufferSize))
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to reset keyboard state")
 			}

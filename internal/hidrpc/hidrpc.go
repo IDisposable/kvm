@@ -3,6 +3,7 @@ package hidrpc
 import (
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
@@ -10,38 +11,46 @@ import (
 type MessageType byte
 
 const (
-	TypeHandshake                 MessageType = 0x01
-	TypeKeyboardReport            MessageType = 0x02
-	TypePointerReport             MessageType = 0x03
-	TypeWheelReport               MessageType = 0x04
-	TypeKeypressReport            MessageType = 0x05
-	TypeKeypressKeepAliveReport   MessageType = 0x09
-	TypeMouseReport               MessageType = 0x06
-	TypeKeyboardMacroReport       MessageType = 0x07
-	TypeCancelKeyboardMacroReport MessageType = 0x08
-	TypeKeyboardLedState          MessageType = 0x32
-	TypeKeydownState              MessageType = 0x33
-	TypeKeyboardMacroState        MessageType = 0x34
+	TypeHandshake                        MessageType = 0x01
+	TypeKeyboardReport                   MessageType = 0x02
+	TypePointerReport                    MessageType = 0x03
+	TypeWheelReport                      MessageType = 0x04
+	TypeKeypressReport                   MessageType = 0x05
+	TypeKeypressKeepAliveReport          MessageType = 0x09
+	TypeMouseReport                      MessageType = 0x06
+	TypeKeyboardMacroReport              MessageType = 0x07
+	TypeCancelKeyboardMacroReport        MessageType = 0x08
+	TypeKeyboardLedState                 MessageType = 0x32
+	TypeKeydownState                     MessageType = 0x33
+	TypeKeyboardMacroState               MessageType = 0x34
+	TypeCancelKeyboardMacroByTokenReport MessageType = 0x35
 )
 
+type QueueIndex int
+
 const (
-	Version byte = 0x01 // Version of the HID RPC protocol
+	Version        byte = 0x01 // Version of the HID RPC protocol
+	HandshakeQueue int  = 0    // Queue index for handshake messages
+	KeyboardQueue  int  = 1    // Queue index for keyboard and macro messages
+	MouseQueue     int  = 2    // Queue index for mouse messages
+	MacroQueue     int  = 3    // Queue index for macro cancel messages
+	OtherQueue     int  = 4    // Queue index for other messages
 )
 
 // GetQueueIndex returns the index of the queue to which the message should be enqueued.
 func GetQueueIndex(messageType MessageType) int {
 	switch messageType {
 	case TypeHandshake:
-		return 0
-	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardMacroReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroState:
-		return 1
+		return HandshakeQueue
+	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroState:
+		return KeyboardQueue
 	case TypePointerReport, TypeMouseReport, TypeWheelReport:
-		return 2
-	// we don't want to block the queue for this message
-	case TypeCancelKeyboardMacroReport:
-		return 3
+		return MouseQueue
+	// we don't want to block the queue for these messages
+	case TypeKeyboardMacroReport, TypeCancelKeyboardMacroReport, TypeCancelKeyboardMacroByTokenReport:
+		return MacroQueue
 	default:
-		return 3
+		return OtherQueue
 	}
 }
 
@@ -115,6 +124,16 @@ func NewKeyboardMacroStateMessage(state bool, isPaste bool) *Message {
 	if isPaste {
 		data[1] = 1
 	}
+
+	return &Message{
+		t: TypeKeyboardMacroState,
+		d: data,
+	}
+}
+
+// NewKeyboardMacroTokenMessage creates a new keyboard macro token message.
+func NewKeyboardMacroTokenMessage(token uuid.UUID) *Message {
+	data, _ := token.MarshalBinary()
 
 	return &Message{
 		t: TypeKeyboardMacroState,

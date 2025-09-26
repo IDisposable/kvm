@@ -98,7 +98,7 @@ func (s *Session) initQueues() {
 	defer s.hidQueueLock.Unlock()
 
 	s.hidQueue = make([]chan hidQueueMessage, 0)
-	for i := 0; i < 4; i++ {
+	for i := 0; i <= hidrpc.OtherQueue; i++ {
 		q := make(chan hidQueueMessage, 256)
 		s.hidQueue = append(s.hidQueue, q)
 	}
@@ -163,7 +163,7 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
 		if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
 			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue index not found")
-			queueIndex = 3
+			queueIndex = hidrpc.OtherQueue
 		}
 
 		queue := session.hidQueue[queueIndex]
@@ -328,7 +328,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
 			if session == currentSession {
 				// Cancel any ongoing keyboard report multi when session closes
-				cancelKeyboardMacro()
+				cancelAllRunningKeyboardMacros()
 				currentSession = nil
 			}
 			// Stop RPC processor
