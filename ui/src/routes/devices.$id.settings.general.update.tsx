@@ -1,10 +1,11 @@
 import { useLocation, useNavigate } from "react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
+import { MdConnectWithoutContact, MdRestartAlt } from "react-icons/md";
 
 import Card from "@/components/Card";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { Button } from "@components/Button";
+import { Button, LinkButton } from "@components/Button";
 import { UpdateState, useUpdateStore } from "@/hooks/stores";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
@@ -33,15 +34,13 @@ export default function SettingsGeneralUpdateRoute() {
     } else {
       setModalView("loading");
     }
-  }, [otaState.updating, otaState.error, setModalView, updateSuccess]);
+  }, [otaState.error, otaState.updating, setModalView, updateSuccess]);
 
   {
     /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
   }
   return <Dialog onClose={() => navigate("..")} onConfirmUpdate={onConfirmUpdate} />;
 }
-
-
 
 export function Dialog({
   onClose,
@@ -239,14 +238,18 @@ function UpdatingDeviceState({
 
     if (!otaState.metadataFetchedAt) {
       return "Fetching update information...";
+    } else if (otaState.rebooting) {
+      return "Rebooting...";
     } else if (!downloadFinishedAt) {
       return `Downloading ${type} update...`;
     } else if (!verfiedAt) {
       return `Verifying ${type} update...`;
     } else if (!updatedAt) {
       return `Installing ${type} update...`;
+    } else if (otaState.rebootNeeded) {
+      return "Reboot needed";
     } else {
-      return `Awaiting reboot`;
+      return "Awaiting reboot";
     }
   };
 
@@ -278,12 +281,47 @@ function UpdatingDeviceState({
         <Card className="space-y-4 p-4">
           {areAllUpdatesComplete() ? (
             <div className="my-2 flex flex-col items-center space-y-2 text-center">
-              <LoadingSpinner className="h-6 w-6 text-blue-700 dark:text-blue-500" />
-              <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span className="font-medium text-black dark:text-white">
-                  Rebooting to complete the update...
-                </span>
-              </div>
+              <CheckCircleIcon className="h-6 w-6 text-blue-700 dark:text-blue-500" />
+              {otaState.rebooting ? (
+                <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
+                  <span className="font-medium text-black dark:text-white">
+                    Rebooting the device to complete the update...
+                  </span>
+                  <p>
+                    This may take a few minutes. The device will automatically
+                    reconnect once it is back online. If it doesn{"'"}t, you can
+                    manually reconnect.
+                    <LinkButton
+                      size="SM"
+                      theme="light"
+                      text="Reconnect to KVM"
+                      LeadingIcon={MdConnectWithoutContact}
+                      textAlign="center"
+                      to={".."}
+                    />
+                  </p>
+                </div>
+              ) : (
+                otaState.rebootNeeded && (
+                  <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
+                    <span className="font-medium text-black dark:text-white">
+                      Device reboot is pending...
+                    </span>
+                    <p>
+                      The JetKVM is preparing to reboot. This may take a while. If it doesn{"'"}t automatically reboot
+                      after a few minutes, you can manually request a reboot.
+                      <LinkButton
+                        size="SM"
+                        theme="light"
+                        text="Reboot the KVM"
+                        LeadingIcon={MdRestartAlt}
+                        textAlign="center"
+                        to={"../reboot"}
+                      />
+                    </p>
+                  </div>
+                )
+              )}
             </div>
           ) : (
             <>
