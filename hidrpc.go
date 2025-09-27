@@ -53,13 +53,13 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		rpcCancelKeyboardMacro()
 		return
 
-	case hidrpc.TypeCancelKeyboardMacroByTokenReport:
-		token, err := message.KeyboardMacroToken()
+	case hidrpc.TypeKeyboardMacroTokenState:
+		tokenState, err := message.KeyboardMacroTokenState()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keyboard macro token")
 			return
 		}
-		rpcCancelKeyboardMacroByToken(token)
+		rpcCancelKeyboardMacroByToken(tokenState.Token)
 		return
 
 	case hidrpc.TypeKeypressKeepAliveReport:
@@ -96,6 +96,7 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 
 	scopedLogger := hidRPCLogger.With().
 		Str("channel", msg.channel).
+		Dur("timelimit", msg.timelimit).
 		Int("data_len", dataLen).
 		Bytes("data", data[:min(dataLen, 32)]).
 		Logger()
@@ -125,7 +126,7 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 		r <- nil
 	}()
 	select {
-	case <-time.After(1 * time.Second):
+	case <-time.After(msg.timelimit * time.Second):
 		scopedLogger.Warn().Msg("HID RPC message timed out")
 	case <-r:
 		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
@@ -241,6 +242,8 @@ func reportHidRPC(params any, session *Session) {
 		message, err = hidrpc.NewKeydownStateMessage(params).Marshal()
 	case hidrpc.KeyboardMacroState:
 		message, err = hidrpc.NewKeyboardMacroStateMessage(params.State, params.IsPaste).Marshal()
+	case hidrpc.KeyboardMacroTokenState:
+		message, err = hidrpc.NewKeyboardMacroTokenMessage(params.Token).Marshal()
 	default:
 		err = fmt.Errorf("unknown HID RPC message type: %T", params)
 	}

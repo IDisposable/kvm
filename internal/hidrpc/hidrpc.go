@@ -2,6 +2,7 @@ package hidrpc
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -11,19 +12,19 @@ import (
 type MessageType byte
 
 const (
-	TypeHandshake                        MessageType = 0x01
-	TypeKeyboardReport                   MessageType = 0x02
-	TypePointerReport                    MessageType = 0x03
-	TypeWheelReport                      MessageType = 0x04
-	TypeKeypressReport                   MessageType = 0x05
-	TypeKeypressKeepAliveReport          MessageType = 0x09
-	TypeMouseReport                      MessageType = 0x06
-	TypeKeyboardMacroReport              MessageType = 0x07
-	TypeCancelKeyboardMacroReport        MessageType = 0x08
-	TypeKeyboardLedState                 MessageType = 0x32
-	TypeKeydownState                     MessageType = 0x33
-	TypeKeyboardMacroState               MessageType = 0x34
-	TypeCancelKeyboardMacroByTokenReport MessageType = 0x35
+	TypeHandshake                 MessageType = 0x01
+	TypeKeyboardReport            MessageType = 0x02
+	TypePointerReport             MessageType = 0x03
+	TypeWheelReport               MessageType = 0x04
+	TypeKeypressReport            MessageType = 0x05
+	TypeKeypressKeepAliveReport   MessageType = 0x09
+	TypeMouseReport               MessageType = 0x06
+	TypeKeyboardMacroReport       MessageType = 0x07
+	TypeCancelKeyboardMacroReport MessageType = 0x08
+	TypeKeyboardLedState          MessageType = 0x32
+	TypeKeydownState              MessageType = 0x33
+	TypeKeyboardMacroState        MessageType = 0x34
+	TypeKeyboardMacroTokenState   MessageType = 0x35
 )
 
 type QueueIndex int
@@ -31,26 +32,26 @@ type QueueIndex int
 const (
 	Version        byte = 0x01 // Version of the HID RPC protocol
 	HandshakeQueue int  = 0    // Queue index for handshake messages
-	KeyboardQueue  int  = 1    // Queue index for keyboard and macro messages
+	KeyboardQueue  int  = 1    // Queue index for keyboard messages
 	MouseQueue     int  = 2    // Queue index for mouse messages
-	MacroQueue     int  = 3    // Queue index for macro cancel messages
+	MacroQueue     int  = 3    // Queue index for macro messages
 	OtherQueue     int  = 4    // Queue index for other messages
 )
 
 // GetQueueIndex returns the index of the queue to which the message should be enqueued.
-func GetQueueIndex(messageType MessageType) int {
+func GetQueueIndex(messageType MessageType) (int, time.Duration) {
 	switch messageType {
 	case TypeHandshake:
-		return HandshakeQueue
+		return HandshakeQueue, 1
 	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroState:
-		return KeyboardQueue
+		return KeyboardQueue, 1
 	case TypePointerReport, TypeMouseReport, TypeWheelReport:
-		return MouseQueue
+		return MouseQueue, 1
 	// we don't want to block the queue for these messages
-	case TypeKeyboardMacroReport, TypeCancelKeyboardMacroReport, TypeCancelKeyboardMacroByTokenReport:
-		return MacroQueue
+	case TypeKeyboardMacroReport, TypeCancelKeyboardMacroReport, TypeKeyboardMacroTokenState:
+		return MacroQueue, 60 // 1 minute timeout
 	default:
-		return OtherQueue
+		return OtherQueue, 5
 	}
 }
 

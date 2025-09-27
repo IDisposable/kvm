@@ -69,11 +69,11 @@ func (m *Message) String() string {
 			return fmt.Sprintf("CancelKeyboardMacroReport{Malformed: %v}", m.d)
 		}
 		return "CancelKeyboardMacroReport"
-	case TypeCancelKeyboardMacroByTokenReport:
+	case TypeKeyboardMacroTokenState:
 		if len(m.d) != 16 {
-			return fmt.Sprintf("CancelKeyboardMacroByTokenReport{Malformed: %v}", m.d)
+			return fmt.Sprintf("KeyboardMacroTokenState{Malformed: %v}", m.d)
 		}
-		return fmt.Sprintf("CancelKeyboardMacroByTokenReport{Token: %s}", uuid.Must(uuid.FromBytes(m.d)).String())
+		return fmt.Sprintf("KeyboardMacroTokenState{Token: %s}", uuid.Must(uuid.FromBytes(m.d)).String())
 	case TypeKeyboardLedState:
 		if len(m.d) < 1 {
 			return fmt.Sprintf("KeyboardLedState{Malformed: %v}", m.d)
@@ -246,19 +246,28 @@ func (m *Message) KeyboardMacroState() (KeyboardMacroState, error) {
 	}, nil
 }
 
-// KeyboardMacroToken returns the keyboard macro token UUID from the message.
-func (m *Message) KeyboardMacroToken() (uuid.UUID, error) {
-	if m.t != TypeCancelKeyboardMacroByTokenReport {
-		return uuid.Nil, fmt.Errorf("invalid message type: %d", m.t)
+type KeyboardMacroTokenState struct {
+	Token uuid.UUID
+}
+
+// KeyboardMacroTokenState returns the keyboard macro token UUID from the message.
+func (m *Message) KeyboardMacroTokenState() (KeyboardMacroTokenState, error) {
+	if m.t != TypeKeyboardMacroTokenState {
+		return KeyboardMacroTokenState{}, fmt.Errorf("invalid message type: %d", m.t)
 	}
 
 	if len(m.d) == 0 {
-		return uuid.Nil, nil
+		return KeyboardMacroTokenState{Token: uuid.Nil}, nil
 	}
 
 	if len(m.d) != 16 {
-		return uuid.Nil, fmt.Errorf("invalid UUID length: %d", len(m.d))
+		return KeyboardMacroTokenState{}, fmt.Errorf("invalid UUID length: %d", len(m.d))
 	}
 
-	return uuid.FromBytes(m.d)
+	token, err := uuid.FromBytes(m.d)
+	if err != nil {
+		return KeyboardMacroTokenState{}, fmt.Errorf("invalid UUID: %v", err)
+	}
+
+	return KeyboardMacroTokenState{Token: token}, nil
 }

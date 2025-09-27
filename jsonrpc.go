@@ -1091,10 +1091,10 @@ func getKeyboardMacroCancelMap() map[uuid.UUID]RunningMacro {
 func addKeyboardMacro(isPaste bool, cancel context.CancelFunc) uuid.UUID {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
-	keyboardMacroCancelMap := getKeyboardMacroCancelMap()
+	cancelMap := getKeyboardMacroCancelMap()
 
 	token := uuid.New() // Generate a unique token
-	keyboardMacroCancelMap[token] = RunningMacro{
+	cancelMap[token] = RunningMacro{
 		isPaste: isPaste,
 		cancel:  cancel,
 	}
@@ -1104,19 +1104,19 @@ func addKeyboardMacro(isPaste bool, cancel context.CancelFunc) uuid.UUID {
 func removeRunningKeyboardMacro(token uuid.UUID) {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
-	keyboardMacroCancelMap := getKeyboardMacroCancelMap()
+	cancelMap := getKeyboardMacroCancelMap()
 
-	delete(keyboardMacroCancelMap, token)
+	delete(cancelMap, token)
 }
 
 func cancelRunningKeyboardMacro(token uuid.UUID) {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
-	keyboardMacroCancelMap := getKeyboardMacroCancelMap()
+	cancelMap := getKeyboardMacroCancelMap()
 
-	if runningMacro, exists := keyboardMacroCancelMap[token]; exists {
+	if runningMacro, exists := cancelMap[token]; exists {
 		runningMacro.cancel()
-		delete(keyboardMacroCancelMap, token)
+		delete(cancelMap, token)
 		logger.Info().Interface("token", token).Msg("canceled keyboard macro by token")
 	} else {
 		logger.Debug().Interface("token", token).Msg("no running keyboard macro found for token")
@@ -1126,11 +1126,11 @@ func cancelRunningKeyboardMacro(token uuid.UUID) {
 func cancelAllRunningKeyboardMacros() {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
-	keyboardMacroCancelMap := getKeyboardMacroCancelMap()
+	cancelMap := getKeyboardMacroCancelMap()
 
-	for token, runningMacro := range keyboardMacroCancelMap {
+	for token, runningMacro := range cancelMap {
 		runningMacro.cancel()
-		delete(keyboardMacroCancelMap, token)
+		delete(cancelMap, token)
 		logger.Info().Interface("token", token).Msg("cancelled keyboard macro")
 	}
 }
@@ -1139,12 +1139,10 @@ func reportRunningMacrosState() {
 	if currentSession != nil {
 		keyboardMacroLock.Lock()
 		defer keyboardMacroLock.Unlock()
-		keyboardMacroCancelMap := getKeyboardMacroCancelMap()
+		cancelMap := getKeyboardMacroCancelMap()
 
 		isPaste := false
-		anyRunning := false
-		for _, runningMacro := range keyboardMacroCancelMap {
-			anyRunning = true
+		for _, runningMacro := range cancelMap {
 			if runningMacro.isPaste {
 				isPaste = true
 				break
@@ -1152,7 +1150,7 @@ func reportRunningMacrosState() {
 		}
 
 		state := hidrpc.KeyboardMacroState{
-			State:   anyRunning,
+			State:   len(cancelMap) > 0,
 			IsPaste: isPaste,
 		}
 
@@ -1194,7 +1192,10 @@ func rpcCancelKeyboardMacroByToken(token uuid.UUID) {
 }
 
 func executeKeyboardMacro(ctx context.Context, isPaste bool, macro []hidrpc.KeyboardMacroStep) error {
-	logger.Debug().Int("macro_steps", len(macro)).Msg("Executing keyboard macro")
+	logger.Debug().
+		Int("macro_steps", len(macro)).
+		Bool("isPaste", isPaste).
+		Msg("Executing keyboard macro")
 
 	// don't report keyboard state changes while executing the macro
 	gadget.SuspendKeyDownMessages()
