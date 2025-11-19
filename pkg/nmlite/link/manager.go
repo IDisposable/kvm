@@ -377,9 +377,11 @@ func (nm *NetlinkManager) RemoveDefaultRoute(family int) error {
 
 func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]net.IP, family int) error {
 	linkIndex := link.Attrs().Index
+	linkName := link.Attrs().Name
 
 	added := 0
 	toRemove := make([]*netlink.Route, 0)
+	otherRoutes := make([]*netlink.Route, 0)
 
 	defaultRoutes, err := nm.ListDefaultRoutes(family)
 	if err != nil {
@@ -388,9 +390,9 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 
 	// check existing default routes
 	for _, defaultRoute := range defaultRoutes {
-		// only check the default routes for the current link
-		// TODO: we should also check others later
+		// check default routes on other links
 		if defaultRoute.LinkIndex != linkIndex {
+			otherRoutes = append(otherRoutes, &defaultRoute)
 			continue
 		}
 
@@ -402,6 +404,23 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 
 		nm.logger.Warn().Str("gateway", key).Msg("keeping default route")
 		delete(expected, key)
+	}
+
+	// Log information about default routes on other interfaces
+	if len(otherRoutes) > 0 {
+		for _, route := range otherRoutes {
+			otherLink, err := netlink.LinkByIndex(route.LinkIndex)
+			otherLinkName := "unknown"
+			if err == nil {
+				otherLinkName = otherLink.Attrs().Name
+			}
+			nm.logger.Info().
+				Str("interface", linkName).
+				Str("other_interface", otherLinkName).
+				Int("other_link_index", route.LinkIndex).
+				Str("gateway", route.Gw.String()).
+				Msg("default route exists on other interface")
+		}
 	}
 
 	// remove remaining default routes
@@ -433,6 +452,7 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 	nm.logger.Info().
 		Int("added", added).
 		Int("removed", len(toRemove)).
+		Int("other_interfaces", len(otherRoutes)).
 		Msg("default routes reconciled")
 
 	return nil
