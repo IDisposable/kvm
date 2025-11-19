@@ -1,6 +1,7 @@
 package native
 
 import (
+	"os"
 	"sync"
 	"time"
 
@@ -31,13 +32,19 @@ type NativeOptions struct {
 	AppVersion           *semver.Version
 	DisplayRotation      uint16
 	DefaultQualityFactor float64
+	MaxRestartAttempts   uint
 	OnVideoStateChange   func(state VideoState)
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
+	OnNativeRestart      func()
 }
 
 func NewNative(opts NativeOptions) *Native {
+	pid := os.Getpid()
+	nativeSubLogger := nativeLogger.With().Int("pid", pid).Str("scope", "native").Logger()
+	displaySubLogger := displayLogger.With().Int("pid", pid).Str("scope", "native").Logger()
+
 	onVideoStateChange := opts.OnVideoStateChange
 	if onVideoStateChange == nil {
 		onVideoStateChange = func(state VideoState) {
@@ -48,7 +55,7 @@ func NewNative(opts NativeOptions) *Native {
 	onVideoFrameReceived := opts.OnVideoFrameReceived
 	if onVideoFrameReceived == nil {
 		onVideoFrameReceived = func(frame []byte, duration time.Duration) {
-			nativeLogger.Info().Interface("frame", frame).Dur("duration", duration).Msg("video frame received")
+			nativeLogger.Trace().Interface("frame", frame).Dur("duration", duration).Msg("video frame received")
 		}
 	}
 
@@ -75,8 +82,8 @@ func NewNative(opts NativeOptions) *Native {
 
 	return &Native{
 		ready:                make(chan struct{}),
-		l:                    nativeLogger,
-		lD:                   displayLogger,
+		l:                    &nativeSubLogger,
+		lD:                   &displaySubLogger,
 		systemVersion:        opts.SystemVersion,
 		appVersion:           opts.AppVersion,
 		displayRotation:      opts.DisplayRotation,
@@ -91,7 +98,7 @@ func NewNative(opts NativeOptions) *Native {
 	}
 }
 
-func (n *Native) Start() {
+func (n *Native) Start() error {
 	// set up singleton
 	setInstance(n)
 	setUpNativeHandlers()
@@ -108,9 +115,11 @@ func (n *Native) Start() {
 
 	if err := videoInit(n.defaultQualityFactor); err != nil {
 		n.l.Error().Err(err).Msg("failed to initialize video")
+		return err
 	}
 
 	close(n.ready)
+	return nil
 }
 
 // DoNotUseThisIsForCrashTestingOnly
